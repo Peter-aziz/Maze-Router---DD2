@@ -105,7 +105,26 @@ def lee_algorithm(grid, source, target, via_cost, wrong_direction_cost):
 
     return path
 
+def route_nets(grid, nets, via_cost, wrong_direction_cost):
+    routed_paths = {}
+    for net_name, pins in nets.items():
+        if len(pins) != 2:
+            print(f"Skipping net {net_name}: for now.")
+            continue
 
+        source, target = pins[0], pins[1]
+        path = lee_algorithm(grid, source, target, via_cost, wrong_direction_cost)
+
+        if not path:
+            print(f"Routing failed for net {net_name}")
+            continue
+
+        # Mark the path on the grid
+        for layer, x, y in path:
+            grid[layer][y][x] = 2  # Or a unique number per net for more clarity
+        routed_paths[net_name] = path
+
+    return routed_paths
 
 def main():
     width, height, obstacles, nets = parse_input_file("input.txt")
