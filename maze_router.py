@@ -21,12 +21,12 @@ def parse_input_file(filename):
             obstacles.append((x, y))
         else:
             # Parse net definition
-            parts = line.strip().split()
-            net_name = parts[0]
+            parts = line.strip().split(") (")
+            net_name = parts[0].strip()
             pins = []
 
             for pin_def in parts[1:]:
-                pin_def = pin_def[1:-1]
+                pin_def = pin_def.strip('()') 
                 layer, x, y = map(int, pin_def.split(','))
                 pins.append((layer, x, y))
 
