@@ -128,9 +128,55 @@ def write_output_file(routed_nets, output_filename):
                 f.write(f"({x}, {y}) ")
             f.write("\n")
 
-## Visualize the routing -- add a visualtisation function here
+## Visualize the routing
+def visualize_routing(width, height, obstacles, routed_nets):
+    grid = np.full((height, width), '', dtype=object)
 
+    # mark obstacles
+    for x, y in obstacles:
+        grid[y][x] = 'obs'
 
+    # mark routed paths and store source & target
+    for net_name, path in routed_nets.items():
+        for i, (x, y) in enumerate(path):
+            if (x, y) == path[0]:
+                grid[y][x] = 'S'
+            elif (x, y) == path[-1]:
+                grid[y][x] = 'T'
+            elif grid[y][x] not in ('S', 'T'):
+                grid[y][x] = str(i) 
+
+    fig, ax = plt.subplots(figsize=(width / 2, height / 2)) #not sure
+    cmap = {
+        'obs': '#1f77b4',   # blue for obstacles
+        'S': '#f28e2b',     # orange for source
+        'T': '#76b900',     # green for target
+    }
+
+    for y in range(height):
+        for x in range(width):
+            val = grid[y][x]
+            color = 'white'
+            if val in cmap:
+                color = cmap[val] # obstacle or source or target
+            elif val.isdigit():
+                color = '#dddddd'  # path
+            ax.add_patch(plt.Rectangle((x, y), 1, 1, color=color, ec='black'))
+            if val and val not in ['obs']:
+                ax.text(x + 0.5, y + 0.5, val, va='center', ha='center', fontsize=8)
+
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.set_xticks(range(width))
+    ax.set_yticks(range(height))
+    ax.set_xticklabels(range(width))
+    ax.set_yticklabels(range(height))
+    ax.set_aspect('equal')
+    ax.invert_yaxis()
+    ax.set_title("Maze Routing Grid View")
+    plt.grid(True)
+    plt.savefig("routing_visualization.png")
+    plt.show()
 
 
 
@@ -176,7 +222,7 @@ def main():
     # visualize
     visualize = input("Do you want to generate a visualization? (y/n): ").strip().lower()
     if visualize == 'y':
-        # visualization fn
+        visualize_routing(width, height, obstacles, routed_nets)
         print("✅ Visualization saved as routing_visualization.png")
 
 
