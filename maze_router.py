@@ -1,134 +1,152 @@
-VIA_COST = 50
-WRONG_DIRECTION_COST = 20
 from collections import deque
+import matplotlib.pyplot as plt
+import numpy as np
+import re
 
 def parse_input_file(filename):
-    grid_size = None
-    obstacles = []
     nets = {}
+    obstacles = []
+    grid_size = None
 
     with open(filename, 'r') as f:
-        lines = f.readlines()
-
-    grid_size = lines[0].strip().split('x')
+        lines = [line.strip() for line in f if line.strip()]
+    grid_size = lines[0].split('x')
     width, height = int(grid_size[0]), int(grid_size[1])
 
+
+## 
     for line in lines[1:]:
         if line.startswith('OBS'):
-            # Parse obstacle coordinates
-            coords = line.strip()[5:-1].split(',')
-            x, y = int(coords[0]), int(coords[1])
-            obstacles.append((x, y))
+            # Used to get the obstacles values 
+            coords = re.findall(r'\((\d+),\s*(\d+)\)', line)
+            if coords:
+                x, y = map(int, coords[0])
+                obstacles.append((x, y))
+            else:
+                print(f"Warning: Malformed obstacle: {line}")
         else:
-            # Parse net definition
-            parts = line.strip().split(") (")
-            net_name = parts[0].strip()
+            # Used to get the nets values
+            parts = line.split()
+            net_name = parts[0]
             pins = []
+            pin_matches = re.findall(r'\((\d+),\s*(\d+)\)', line)
+            for match in pin_matches:
+                x, y = map(int, match)
+                pins.append((x, y))
 
-            for pin_def in parts[1:]:
-                pin_def = pin_def.strip('()') 
-                layer, x, y = map(int, pin_def.split(','))
-                pins.append((layer, x, y))
+            if len(pins) != 2:
+                print(f"Error: Net {net_name} does not have exactly 2 pins. Skipping.")
+                continue
 
             nets[net_name] = pins
 
     return width, height, obstacles, nets
 
 
-def lee_algorithm(grid, source, target, via_cost, wrong_direction_cost):
+def initialize_grid(width, height, obstacles):
+    grid = []
+    for y in range(height):
+        row = []
+        for x in range(width):
+            row.append(0)
+        grid.append(row)
+    for x, y in obstacles:
+        grid[y][x] = 1
+    return grid
+
+def lee_algorithm(grid, source, target, wrong_direction_cost):
+    width = len(grid[0])
+    height = len(grid)
     queue = deque([source])
     visited = set([source])
     parent = {source: None}
     costs = {source: 0}
 
-    source_layer, source_x, source_y = source
-    target_layer, target_x, target_y = target
-
-    directions = [
-        (0, 0, 1),   # right (y+1)
-        (0, 0, -1),  # left (y-1)
-        (0, 1, 0),   # down (x+1)
-        (0, -1, 0),  # up (x-1)
-        (1, 0, 0),   # via up (layer+1)
-        (-1, 0, 0),  # via down (layer-1)
-    ]
-
-    def is_wrong_direction(layer, dx, dy):
-        if layer == 0 and dx != 0:
-            return True  # V on H
-        if layer == 1 and dy != 0:
-            return True  # H on V
-        return False
-
-    # Wave propagation
     while queue:
         current = queue.popleft()
+        x, y = current
         if current == target:
             break
+            # i think these are all the directions - revise later
+        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height:
+                if grid[ny][nx] == 0:
+                    direction_cost = 0
+                    if dx == 0:
+                        direction_cost = wrong_direction_cost
+                    new_cost = costs[current] + 1 + direction_cost
+                    new_pos = (nx, ny)
+                    if new_pos not in costs or new_cost < costs[new_pos]:
+                        costs[new_pos] = new_cost
+                        parent[new_pos] = current
+                        queue.append(new_pos)
+                        visited.add(new_pos)
 
-        curr_layer, curr_x, curr_y = current
-        for dl, dx, dy in directions:
-            new_layer = curr_layer + dl
-            new_x = curr_x + dx
-            new_y = curr_y + dy
-            neighbor = (new_layer, new_x, new_y)
-
-            # Bounds and obstacle check
-            if (0 <= new_layer < len(grid) and
-                0 <= new_x < len(grid[0]) and
-                0 <= new_y < len(grid[0][0]) and
-                grid[new_layer][new_x][new_y] == 0 and
-                neighbor not in visited):
-
-                # Calculate cost
-                cost = costs[current]
-                if dl != 0:
-                    cost += via_cost
-                elif is_wrong_direction(curr_layer, dx, dy):
-                    cost += wrong_direction_cost
-                else:
-                    cost += 1  
-
-                visited.add(neighbor)
-                costs[neighbor] = cost
-                parent[neighbor] = current
-                queue.append(neighbor)
-
-    # Backtrack to find path
-    path = []
     if target in parent:
+        path = []
         curr = target
-        while curr:
+        while curr is not None:
             path.append(curr)
             curr = parent[curr]
+        # Reverse to gett the correctt path
         path.reverse()
+        return path
+    else:
+        return None
 
-    return path
-
-def route_nets(grid, nets, via_cost, wrong_direction_cost):
-    routed_paths = {}
+def route_all_nets(width, height, obstacles, nets, wrong_direction_cost):
+    grid = initialize_grid(width, height, obstacles)
+    routed_nets = {}
     for net_name, pins in nets.items():
-        if len(pins) != 2:
-            print(f"Skipping net {net_name}: for now.")
-            continue
+        # Mark pins as available even if we have an obsss in place- just for errors in the input file
+        for x, y in pins:
+            grid[y][x] = 0
 
-        source, target = pins[0], pins[1]
-        path = lee_algorithm(grid, source, target, via_cost, wrong_direction_cost)
+        source, target = pins
+        path = lee_algorithm(grid, source, target, wrong_direction_cost)
+        if path is None:
+            print(f"Failed to route net {net_name}")
+        else:
+            routed_nets[net_name] = path
+            for x, y in path:
+                grid[y][x] = 1
+        # Mark pins as used --> for the next internation
+        for x, y in pins:
+            grid[y][x] = 1
+    return routed_nets
 
-        if not path:
-            print(f"Routing failed for net {net_name}")
-            continue
+def write_output_file(routed_nets, output_filename):
+    with open(output_filename, 'w') as f:
+        for net_name, path in routed_nets.items():
+            f.write(f"{net_name} ")
+            for x, y in path:
+                f.write(f"({x}, {y}) ")
+            f.write("\n")
 
-        # Mark the path on the grid
-        for layer, x, y in path:
-            grid[layer][y][x] = 2  # Or a unique number per net for more clarity
-        routed_paths[net_name] = path
+## Visualize the routing -- add a visualtisation function here
 
-    return routed_paths
+
+
+
+
+
 
 def main():
-    width, height, obstacles, nets = parse_input_file("input.txt")
-   
+    import argparse
+    parser = argparse.ArgumentParser(description='Lee\'s Algorithm Maze Router (1 layer, 2-pin nets)')
+    parser.add_argument('input_file', help='Input file with grid and net definitions')
+    parser.add_argument('output_file', help='Output file for routing results')
+    parser.add_argument('--wrong_direction_cost', type=int, default=20, help='Cost for routing in non-preferred direction')
+    args = parser.parse_args()
+
+    width, height, obstacles, nets = parse_input_file(args.input_file)
+    routed_nets = route_all_nets(width, height, obstacles, nets, args.wrong_direction_cost)
+    write_output_file(routed_nets, args.output_file)
+    print(f"Routing completed. Results written to {args.output_file}")
+    # call the visualization function
+    
+    print(f"Visualization saved as routing_visualization.png")
 
 if __name__ == "__main__":
     main()
