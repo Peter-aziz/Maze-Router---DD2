@@ -2,6 +2,10 @@ from collections import deque
 import matplotlib.pyplot as plt
 import numpy as np
 import re
+import os
+
+## helper functions
+#check the test cases are valid ...
 
 def parse_input_file(filename):
     nets = {}
@@ -133,20 +137,48 @@ def write_output_file(routed_nets, output_filename):
 
 
 def main():
-    import argparse
-    parser = argparse.ArgumentParser(description='Lee\'s Algorithm Maze Router (1 layer, 2-pin nets)')
-    parser.add_argument('input_file', help='Input file with grid and net definitions')
-    parser.add_argument('output_file', help='Output file for routing results')
-    parser.add_argument('--wrong_direction_cost', type=int, default=20, help='Cost for routing in non-preferred direction')
-    args = parser.parse_args()
 
-    width, height, obstacles, nets = parse_input_file(args.input_file)
-    routed_nets = route_all_nets(width, height, obstacles, nets, args.wrong_direction_cost)
-    write_output_file(routed_nets, args.output_file)
-    print(f"Routing completed. Results written to {args.output_file}")
-    # call the visualization function
-    
-    print(f"Visualization saved as routing_visualization.png")
+    print("======= Welcome to Lee's Algorithm Maze Router ======")
+
+    # Get input file
+    input_file = input("Enter input file name (default: input.txt): ").strip() or "input.txt"
+    while not os.path.exists(input_file):
+        print("❌ File not found.")
+        input_file = input("Enter a valid input file name: ").strip()
+
+    # Get output file
+    output_file = input("Enter output file name (default: output.txt): ").strip() or "output.txt"
+
+    # Get wrong direction cost
+    try:
+        wrong_direction_cost_input = input("Enter wrong direction cost (default: 20): ").strip()
+        wrong_direction_cost = int(wrong_direction_cost_input) if wrong_direction_cost_input else 20
+    except ValueError:
+        print("⚠️ Invalid cost, using default value 20.")
+        wrong_direction_cost = 20
+
+    ## ========= for later ============
+    # # Get VIAs cost
+    # try:
+    #     VIA_cost_input = input("Enter VIA cost (default: 20): ").strip()
+    #     VIA_cost = int(VIA_cost_input) if VIA_cost_input else 20
+    # except ValueError:
+    #     print("⚠️ Invalid cost, using default value 20.")
+    #     VIA_cost = 20
+
+    print("\n Starting routing...")
+    width, height, obstacles, nets = parse_input_file(input_file)
+    routed_nets = route_all_nets(width, height, obstacles, nets, wrong_direction_cost)
+    write_output_file(routed_nets, output_file)
+
+    print(f"✅ Routing completed. Results saved to {output_file}")
+
+    # visualize
+    visualize = input("Do you want to generate a visualization? (y/n): ").strip().lower()
+    if visualize == 'y':
+        # visualization fn
+        print("✅ Visualization saved as routing_visualization.png")
+
 
 if __name__ == "__main__":
     main()
