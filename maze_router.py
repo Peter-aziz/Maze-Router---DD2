@@ -1,12 +1,55 @@
 from collections import deque
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')
+matplotlib.use('TkAgg')
 import numpy as np
 import re
 import os
 
-## helper functions
-#check the test cases are valid ...
+# ------------------------------- HELPER FUNCTIONS -------------------------------
+#validate input
+def is_valid(file_path):
+    try:
+        with open(file_path, 'r') as f:
+            lines = [line.strip() for line in f if line.strip()]
 
+        # Validate grid size
+        grid_line = lines[0]
+        if not re.match(r'^\d+x\d+$', grid_line):
+            print("Invalid grid size format.")
+            return False
+        width, height = map(int, grid_line.split('x'))
+        if not (1 <= width <= 1000 and 1 <= height <= 1000):
+            print("Grid size out of allowed bounds (1 to 1000).")
+            return False
+
+        for line in lines[1:]:
+            if line.startswith("OBS"):
+                if not re.match(r'^OBS\s*\(\d+,\s*\d+\)$', line):
+                    print(f"Invalid obstacle format: {line}")
+                    return False
+                x, y = map(int, re.findall(r'\d+', line))
+                if not (0 <= x < width and 0 <= y < height):
+                    print(f"Obstacle out of bounds: {line}")
+                    return False
+            else:
+                match = re.match(r'^(\w+)((\s*\(\d+,\s*\d+\))+)$', line)
+                if not match:
+                    print(f"Invalid net format: {line}")
+                    return False
+                coords = re.findall(r'\(\d+,\s*\d+\)', line)
+                for c in coords:
+                    x, y = map(int, re.findall(r'\d+', c))
+                    if not (0 <= x < width and 0 <= y < height):
+                        print(f"Pin out of bounds in net: {line}")
+                        return False
+
+        return True
+    except Exception as e:
+        print(f"Error while reading the file: {e}")
+        return False
+# parse input
 def parse_input_file(filename):
     nets = {}
     obstacles = []
@@ -17,8 +60,6 @@ def parse_input_file(filename):
     grid_size = lines[0].split('x')
     width, height = int(grid_size[0]), int(grid_size[1])
 
-
-## 
     for line in lines[1:]:
         if line.startswith('OBS'):
             # Used to get the obstacles values 
@@ -46,7 +87,7 @@ def parse_input_file(filename):
 
     return width, height, obstacles, nets
 
-
+# initialize grid
 def initialize_grid(width, height, obstacles):
     grid = []
     for y in range(height):
@@ -58,6 +99,66 @@ def initialize_grid(width, height, obstacles):
         grid[y][x] = 1
     return grid
 
+# write output
+def write_output_file(routed_nets, output_filename):
+    with open(output_filename, 'w') as f:
+        for net_name, path in routed_nets.items():
+            f.write(f"{net_name} ")
+            for x, y in path:
+                f.write(f"({x}, {y}) ")
+            f.write("\n")
+
+# Visualize the routed nets
+def visualize_routing(width, height, obstacles, routed_nets):
+    grid = np.full((height, width), '', dtype=object)
+
+    # mark obstacles
+    for x, y in obstacles:
+        grid[y][x] = 'obs'
+
+    # mark routed paths and store source & target
+    for net_name, path in routed_nets.items():
+        for i, (x, y) in enumerate(path):
+            if (x, y) == path[0]:
+                grid[y][x] = 'S'
+            elif (x, y) == path[-1]:
+                grid[y][x] = 'T'
+            elif grid[y][x] not in ('S', 'T'):
+                grid[y][x] = str(i)
+
+    fig, ax = plt.subplots(figsize=(width / 2, height / 2)) #not sure
+    cmap = {
+        'obs': '#1f77b4',   # blue for obstacles
+        'S': '#f28e2b',     # orange for source
+        'T': '#76b900',     # green for target
+    }
+
+    for y in range(height):
+        for x in range(width):
+            val = grid[y][x]
+            color = 'white'
+            if val in cmap:
+                color = cmap[val] # obstacle or source or target
+            elif val.isdigit():
+                color = '#dddddd'  # path
+            ax.add_patch(plt.Rectangle((x, y), 1, 1, color=color, ec='black'))
+            if val and val not in ['obs']:
+                ax.text(x + 0.5, y + 0.5, val, va='center', ha='center', fontsize=8)
+
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
+    ax.set_xticks(range(width))
+    ax.set_yticks(range(height))
+    ax.set_xticklabels(range(width))
+    ax.set_yticklabels(range(height))
+    ax.set_aspect('equal')
+    ax.invert_yaxis()
+    ax.set_title("Maze Routing Grid View")
+    plt.grid(True)
+    plt.savefig("routing_visualization.png")
+    plt.show()
+
+# ------------------------------- LEE MAZE ALG. -------------------------------
 def lee_algorithm(grid, source, target, wrong_direction_cost):
     width = len(grid[0])
     height = len(grid)
@@ -99,6 +200,7 @@ def lee_algorithm(grid, source, target, wrong_direction_cost):
     else:
         return None
 
+# ------------------------------- ROUTING FUNCTION -------------------------------
 def route_all_nets(width, height, obstacles, nets, wrong_direction_cost):
     grid = initialize_grid(width, height, obstacles)
     routed_nets = {}
@@ -119,69 +221,7 @@ def route_all_nets(width, height, obstacles, nets, wrong_direction_cost):
         for x, y in pins:
             grid[y][x] = 1
     return routed_nets
-
-def write_output_file(routed_nets, output_filename):
-    with open(output_filename, 'w') as f:
-        for net_name, path in routed_nets.items():
-            f.write(f"{net_name} ")
-            for x, y in path:
-                f.write(f"({x}, {y}) ")
-            f.write("\n")
-
-## Visualize the routing
-def visualize_routing(width, height, obstacles, routed_nets):
-    grid = np.full((height, width), '', dtype=object)
-
-    # mark obstacles
-    for x, y in obstacles:
-        grid[y][x] = 'obs'
-
-    # mark routed paths and store source & target
-    for net_name, path in routed_nets.items():
-        for i, (x, y) in enumerate(path):
-            if (x, y) == path[0]:
-                grid[y][x] = 'S'
-            elif (x, y) == path[-1]:
-                grid[y][x] = 'T'
-            elif grid[y][x] not in ('S', 'T'):
-                grid[y][x] = str(i) 
-
-    fig, ax = plt.subplots(figsize=(width / 2, height / 2)) #not sure
-    cmap = {
-        'obs': '#1f77b4',   # blue for obstacles
-        'S': '#f28e2b',     # orange for source
-        'T': '#76b900',     # green for target
-    }
-
-    for y in range(height):
-        for x in range(width):
-            val = grid[y][x]
-            color = 'white'
-            if val in cmap:
-                color = cmap[val] # obstacle or source or target
-            elif val.isdigit():
-                color = '#dddddd'  # path
-            ax.add_patch(plt.Rectangle((x, y), 1, 1, color=color, ec='black'))
-            if val and val not in ['obs']:
-                ax.text(x + 0.5, y + 0.5, val, va='center', ha='center', fontsize=8)
-
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.set_xticks(range(width))
-    ax.set_yticks(range(height))
-    ax.set_xticklabels(range(width))
-    ax.set_yticklabels(range(height))
-    ax.set_aspect('equal')
-    ax.invert_yaxis()
-    ax.set_title("Maze Routing Grid View")
-    plt.grid(True)
-    plt.savefig("routing_visualization.png")
-    plt.show()
-
-
-
-
-
+#================================== MAIN ==================================
 def main():
 
     print("======= Welcome to Lee's Algorithm Maze Router ======")
@@ -211,19 +251,23 @@ def main():
     # except ValueError:
     #     print("⚠️ Invalid cost, using default value 20.")
     #     VIA_cost = 20
+    print("\n")
+    if is_valid(input_file):
+        print("\n Starting routing...")
+        width, height, obstacles, nets = parse_input_file(input_file)
+        routed_nets = route_all_nets(width, height, obstacles, nets, wrong_direction_cost)
+        write_output_file(routed_nets, output_file)
 
-    print("\n Starting routing...")
-    width, height, obstacles, nets = parse_input_file(input_file)
-    routed_nets = route_all_nets(width, height, obstacles, nets, wrong_direction_cost)
-    write_output_file(routed_nets, output_file)
+        print(f"✅ Routing completed. Results saved to {output_file}")
 
-    print(f"✅ Routing completed. Results saved to {output_file}")
+        # visualize
+        visualize = input("Do you want to generate a visualization? (y/n): ").strip().lower()
+        if visualize == 'y':
+            visualize_routing(width, height, obstacles, routed_nets)
+            print("✅ Visualization saved as routing_visualization.png")
+    else:
+        print("Couldn't start routing...")
 
-    # visualize
-    visualize = input("Do you want to generate a visualization? (y/n): ").strip().lower()
-    if visualize == 'y':
-        visualize_routing(width, height, obstacles, routed_nets)
-        print("✅ Visualization saved as routing_visualization.png")
 
 
 if __name__ == "__main__":
