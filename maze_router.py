@@ -83,8 +83,8 @@ def parse_input_file(filename):
     return width, height, obstacles, nets
 
 # choose the sources as the ones closer to the edges
-def reorder_nets (nets, chip_width, chip_height):
-    reordered_nets = {}
+def reorder_pins (nets, chip_width, chip_height):
+    new_nets = {}
 
     for net_name, pins in nets.items():
         def distance_to_edge(pin):
@@ -96,9 +96,9 @@ def reorder_nets (nets, chip_width, chip_height):
 
         reordered_pins = [source] + [pin for pin in pins if pin != source]
 
-        reordered_nets[net_name] = reordered_pins
+        new_nets[net_name] = reordered_pins
 
-    return reordered_nets
+    return new_nets
 
 # initialize grid
 def initialize_grid(width, height, obstacles):
@@ -305,23 +305,21 @@ def main():
     print("\n")
     if is_valid(input_file):
         print("\n Starting routing...")
+        
         width, height, obstacles, nets = parse_input_file(input_file)
-        print(f"width {width}, height{height}, obstacles{obstacles}, nets{nets}")
-        reorder_net = reorder_nets(nets, width, height)
-        # for testing
-        print (reorder_net)
-        routed_nets = route_all_nets(width, height, obstacles, nets, wrong_direction_cost, VIA_cost)
+        new_nets = reorder_pins(nets, width, height)
+        routed_nets = route_all_nets(width, height, obstacles, new_nets, wrong_direction_cost, VIA_cost)
         write_output_file(routed_nets, output_file)
 
-    #     print(f"✅ Routing completed. Results saved to {output_file}")
+        print(f"✅ Routing completed. Results saved to {output_file}")
 
     #     # visualize
     #     visualize = input("Do you want to generate a visualization? (y/n): ").strip().lower()
     #     if visualize == 'y':
     #         visualize_routing(width, height, obstacles, routed_nets)
     #         print("✅ Visualization saved as routing_visualization.png")
-    # else:
-    #     print("Couldn't start routing...")
+    else:
+        print("Couldn't start routing...")
 
 
 if __name__ == "__main__":
