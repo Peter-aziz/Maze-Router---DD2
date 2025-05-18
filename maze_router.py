@@ -77,8 +77,7 @@ def parse_input_file(filename):
             pin_matches = re.findall(r'\((\d+),\s*(\d+),\s*(\d+)\)', line)
             for match in pin_matches:
                 layer, x, y = map(int, match)
-                pins.append((layer, x, y))
-
+                pins.append((layer-1, x, y))   # subtract one from the layer
             nets[net_name] = pins
 
     return width, height, obstacles, nets
@@ -118,8 +117,8 @@ def write_output_file(routed_nets, output_filename):
     with open(output_filename, 'w') as f:
         for net_name, path in routed_nets.items():
             f.write(f"{net_name} ")
-            for x, y in path:
-                f.write(f"({x}, {y}) ")
+            for layer, x, y in path:
+                f.write(f"({layer+1}, {x}, {y}) ")
             f.write("\n")
 
 # Visualize the routed nets
@@ -171,62 +170,6 @@ def visualize_routing(width, height, obstacles, routed_nets):
     plt.grid(True)
     plt.savefig("routing_visualization.png")
     plt.show()
-
-# ------------------------------- LEE MAZE ALG. -------------------------------
-def lee_algorithm(grids, source, target, wrong_direction_cost, via_cost=20):
-    width = len(grids[0][0])
-    height = len(grids[0])
-    queue = deque([source])
-    visited = set([source])
-    parent = {source: None}
-    costs = {source: 0}
-
-    while queue:
-        current = queue.popleft()
-        layer, x, y = current
-
-        if current == target:
-            break
-
-        # Explore 4 directional moves (up, down, left, right)
-        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < width and 0 <= ny < height:
-                if grids[layer][ny][nx] == 0:
-                    # Add cost if moving in wrong direction
-                    direction_cost = 0
-                    if (layer == 0 and dx == 0) or (layer == 1 and dy == 0):
-                        direction_cost = wrong_direction_cost
-                    new_cost = costs[current] + 1 + direction_cost
-                    new_pos = (layer, nx, ny)
-                    if new_pos not in costs or new_cost < costs[new_pos]:
-                        costs[new_pos] = new_cost
-                        parent[new_pos] = current
-                        queue.append(new_pos)
-                        visited.add(new_pos)
-
-        # Try switching layers (via)
-        other_layer = 1 - layer
-        if grids[other_layer][y][x] == 0:
-            via_pos = (other_layer, x, y)
-            via_cost_total = costs[current] + via_cost
-            if via_pos not in costs or via_cost_total < costs[via_pos]:
-                costs[via_pos] = via_cost_total
-                parent[via_pos] = current
-                queue.append(via_pos)
-                visited.add(via_pos)
-
-    if target in parent:
-        path = []
-        curr = target
-        while curr is not None:
-            path.append(curr)
-            curr = parent[curr]
-        # Reverse to gett the correctt path
-        path.reverse()
-        return path
-    else:
-        return None
 
 # ------------------------------- LEE MAZE ALG. MULTIPIN -------------------------------
 def lee_algorithm_multisource(grid, pins, wrong_direction_cost, via_cost=20):
@@ -351,14 +294,14 @@ def main():
         print("⚠️ Invalid cost, using default value 20.")
         wrong_direction_cost = 20
 
-    ## ========= for later ============
-    # # Get VIAs cost
-    # try:
-    #     VIA_cost_input = input("Enter VIA cost (default: 20): ").strip()
-    #     VIA_cost = int(VIA_cost_input) if VIA_cost_input else 20
-    # except ValueError:
-    #     print("⚠️ Invalid cost, using default value 20.")
-    #     VIA_cost = 20
+     # Get VIAs cost
+    try:
+        VIA_cost_input = input("Enter VIA cost (default: 20): ").strip()
+        VIA_cost = int(VIA_cost_input) if VIA_cost_input else 20
+    except ValueError:
+        print("⚠️ Invalid cost, using default value 20.")
+        VIA_cost = 20
+
     print("\n")
     if is_valid(input_file):
         print("\n Starting routing...")
@@ -367,8 +310,8 @@ def main():
         reorder_net = reorder_nets(nets, width, height)
         # for testing
         print (reorder_net)
-    #     routed_nets = route_all_nets(width, height, obstacles, nets, wrong_direction_cost)
-    #     write_output_file(routed_nets, output_file)
+        routed_nets = route_all_nets(width, height, obstacles, nets, wrong_direction_cost, VIA_cost)
+        write_output_file(routed_nets, output_file)
 
     #     print(f"✅ Routing completed. Results saved to {output_file}")
 
@@ -379,7 +322,6 @@ def main():
     #         print("✅ Visualization saved as routing_visualization.png")
     # else:
     #     print("Couldn't start routing...")
-
 
 
 if __name__ == "__main__":
