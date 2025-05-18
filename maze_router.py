@@ -50,6 +50,7 @@ def is_valid(file_path):
     except Exception as e:
         print(f"Error while reading the file: {e}")
         return False
+    
 # parse input
 def parse_input_file(filename):
     nets = {}
@@ -68,25 +69,37 @@ def parse_input_file(filename):
             if coords:
                 x, y = map(int, coords[0])
                 obstacles.append((x, y))
-            else:
-                print(f"Warning: Malformed obstacle: {line}")
         else:
-            # Used to get the nets values
+           # Used to get the nets values
             parts = line.split()
             net_name = parts[0]
             pins = []
-            pin_matches = re.findall(r'\((\d+),\s*(\d+)\)', line)
+            pin_matches = re.findall(r'\((\d+),\s*(\d+),\s*(\d+)\)', line)
             for match in pin_matches:
-                x, y = map(int, match)
-                pins.append((x, y))
-
-            if len(pins) != 2:
-                print(f"Error: Net {net_name} does not have exactly 2 pins. Skipping.")
-                continue
+                layer, x, y = map(int, match)
+                pins.append((layer, x, y))
 
             nets[net_name] = pins
 
     return width, height, obstacles, nets
+
+# choose the sources as the ones closer to the edges
+def reorder_nets (nets, chip_width, chip_height):
+    reordered_nets = {}
+
+    for net_name, pins in nets.items():
+        def distance_to_edge(pin):
+            _, x, y = pin
+            return min(x, y, chip_width - x, chip_height - y)
+
+        # Find source pin (closest to edge)
+        source = min(pins, key=distance_to_edge)
+
+        reordered_pins = [source] + [pin for pin in pins if pin != source]
+
+        reordered_nets[net_name] = reordered_pins
+
+    return reordered_nets
 
 # initialize grid
 def initialize_grid(width, height, obstacles):
@@ -256,18 +269,22 @@ def main():
     if is_valid(input_file):
         print("\n Starting routing...")
         width, height, obstacles, nets = parse_input_file(input_file)
-        routed_nets = route_all_nets(width, height, obstacles, nets, wrong_direction_cost)
-        write_output_file(routed_nets, output_file)
+        print(f"width {width}, height{height}, obstacles{obstacles}, nets{nets}")
+        reorder_nets = reorder_nets(nets, width, height)
+        # for testing
+        print (reorder_nets)
+    #     routed_nets = route_all_nets(width, height, obstacles, nets, wrong_direction_cost)
+    #     write_output_file(routed_nets, output_file)
 
-        print(f"✅ Routing completed. Results saved to {output_file}")
+    #     print(f"✅ Routing completed. Results saved to {output_file}")
 
-        # visualize
-        visualize = input("Do you want to generate a visualization? (y/n): ").strip().lower()
-        if visualize == 'y':
-            visualize_routing(width, height, obstacles, routed_nets)
-            print("✅ Visualization saved as routing_visualization.png")
-    else:
-        print("Couldn't start routing...")
+    #     # visualize
+    #     visualize = input("Do you want to generate a visualization? (y/n): ").strip().lower()
+    #     if visualize == 'y':
+    #         visualize_routing(width, height, obstacles, routed_nets)
+    #         print("✅ Visualization saved as routing_visualization.png")
+    # else:
+    #     print("Couldn't start routing...")
 
 
 
