@@ -23,7 +23,7 @@ def is_valid(file_path):
         if not (1 <= width <= 1000 and 1 <= height <= 1000):
             print("Grid size out of allowed bounds (1 to 1000).")
             return False
-
+        # Validate obstacles
         for line in lines[1:]:
             if line.startswith("OBS"):
                 if not re.match(r'^OBS\s*\(\d+,\s*\d+\)$', line):
@@ -34,14 +34,15 @@ def is_valid(file_path):
                     print(f"Obstacle out of bounds: {line}")
                     return False
             else:
-                match = re.match(r'^(\w+)((\s*\(\d+,\s*\d+\))+)$', line)
+                # Validate nets
+                match = re.match(r'^(\w+)((\s*\(\d+,\s*\d+,\s*\d+\))+)$', line)
                 if not match:
                     print(f"Invalid net format: {line}")
                     return False
-                coords = re.findall(r'\(\d+,\s*\d+\)', line)
+                coords = re.findall(r'\(\d+,\s*\d+,\s*\d+\)', line)
                 for c in coords:
-                    x, y = map(int, re.findall(r'\d+', c))
-                    if not (0 <= x < width and 0 <= y < height):
+                    l, x, y = map(int, re.findall(r'\d+', c))
+                    if not (0 <= x < width and 0 <= y < height and 1<= l <= 2):
                         print(f"Pin out of bounds in net: {line}")
                         return False
 
