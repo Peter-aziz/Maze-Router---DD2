@@ -103,15 +103,15 @@ def reorder_nets (nets, chip_width, chip_height):
 
 # initialize grid
 def initialize_grid(width, height, obstacles):
-    grid = []
-    for y in range(height):
-        row = []
-        for x in range(width):
-            row.append(0)
-        grid.append(row)
+     # Create two layers: each is a 2D grid of zeros
+    layer1 = [[0 for _ in range(width)] for _ in range(height)]
+    layer2 = [[0 for _ in range(width)] for _ in range(height)]
+
+    # Mark obstacles in both layers
     for x, y in obstacles:
-        grid[y][x] = 1
-    return grid
+        layer1[y][x] = 1
+
+    return [layer1, layer2]  
 
 # write output
 def write_output_file(routed_nets, output_filename):
@@ -173,9 +173,9 @@ def visualize_routing(width, height, obstacles, routed_nets):
     plt.show()
 
 # ------------------------------- LEE MAZE ALG. -------------------------------
-def lee_algorithm(grid, source, target, wrong_direction_cost):
-    width = len(grid[0])
-    height = len(grid)
+def lee_algorithm(grids, source, target, wrong_direction_cost, via_cost=20):
+    width = len(grids[0][0])
+    height = len(grids[0])
     queue = deque([source])
     visited = set([source])
     parent = {source: None}
@@ -183,24 +183,38 @@ def lee_algorithm(grid, source, target, wrong_direction_cost):
 
     while queue:
         current = queue.popleft()
-        x, y = current
+        layer, x, y = current
+
         if current == target:
             break
-            # i think these are all the directions - revise later
+
+        # Explore 4 directional moves (up, down, left, right)
         for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
             nx, ny = x + dx, y + dy
             if 0 <= nx < width and 0 <= ny < height:
-                if grid[ny][nx] == 0:
+                if grids[layer][ny][nx] == 0:
+                    # Add cost if moving in wrong direction
                     direction_cost = 0
-                    if dx == 0:
+                    if (layer == 0 and dx == 0) or (layer == 1 and dy == 0):
                         direction_cost = wrong_direction_cost
                     new_cost = costs[current] + 1 + direction_cost
-                    new_pos = (nx, ny)
+                    new_pos = (layer, nx, ny)
                     if new_pos not in costs or new_cost < costs[new_pos]:
                         costs[new_pos] = new_cost
                         parent[new_pos] = current
                         queue.append(new_pos)
                         visited.add(new_pos)
+
+        # Try switching layers (via)
+        other_layer = 1 - layer
+        if grids[other_layer][y][x] == 0:
+            via_pos = (other_layer, x, y)
+            via_cost_total = costs[current] + via_cost
+            if via_pos not in costs or via_cost_total < costs[via_pos]:
+                costs[via_pos] = via_cost_total
+                parent[via_pos] = current
+                queue.append(via_pos)
+                visited.add(via_pos)
 
     if target in parent:
         path = []
@@ -214,27 +228,107 @@ def lee_algorithm(grid, source, target, wrong_direction_cost):
     else:
         return None
 
+# ------------------------------- LEE MAZE ALG. MULTIPIN -------------------------------
+def lee_algorithm_multisource(grid, pins, wrong_direction_cost, via_cost=20):
+    width = len(grid[0][0])
+    height = len(grid[0])
+
+    # Initialize visited structures
+    sources = set([pins[0]])  # Start from the first pin
+    targets = set(pins[1:])
+    full_path = []
+    
+    while targets:
+        # BFS from current sources to find closest target
+        queue = deque(sources)
+        visited = set(sources)
+        parent = {pos: None for pos in sources}
+        costs = {pos: 0 for pos in sources}
+        found_target = None
+
+        while queue and not found_target:
+            current = queue.popleft()
+            layer, x, y = current
+
+            # Check if we've reached a target pin
+            if current in targets:
+                found_target = current
+                break
+
+            # Explore 4 directions
+            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < width and 0 <= ny < height:
+                    if grid[layer][ny][nx] == 0 or (layer, nx, ny) in targets:
+                        direction_cost = 0
+                        if (layer == 0 and dx == 0) or (layer == 1 and dy == 0):
+                            direction_cost = wrong_direction_cost
+                        new_cost = costs[current] + 1 + direction_cost
+                        new_pos = (layer, nx, ny)
+                        if new_pos not in costs or new_cost < costs[new_pos]:
+                            costs[new_pos] = new_cost
+                            parent[new_pos] = current
+                            queue.append(new_pos)
+                            visited.add(new_pos)
+
+            # Try switching layers (vias)
+            other_layer = 1 - layer
+            if grid[other_layer][y][x] == 0 or (other_layer, x, y) in targets:
+                via_pos = (other_layer, x, y)
+                new_cost = costs[current] + via_cost
+                if via_pos not in costs or new_cost < costs[via_pos]:
+                    costs[via_pos] = new_cost
+                    parent[via_pos] = current
+                    queue.append(via_pos)
+                    visited.add(via_pos)
+
+        if found_target is None:
+            print("Failed to connect all pins.")
+            return None  # Can't connect all pins
+
+        # Trace back the path and update grid
+        path = []
+        curr = found_target
+        while curr is not None:
+            path.append(curr)
+            curr = parent[curr]
+        path.reverse()
+
+        # Mark path cells as new sources
+        for cell in path:
+            sources.add(cell)
+            grid[cell[0]][cell[2]][cell[1]] = 1  # layer, y, x
+
+        full_path.extend(path)
+        targets.remove(found_target)
+
+    return full_path
+
+
 # ------------------------------- ROUTING FUNCTION -------------------------------
-def route_all_nets(width, height, obstacles, nets, wrong_direction_cost):
+def route_all_nets(width, height, obstacles, nets, wrong_direction_cost, via_cost=20):
     grid = initialize_grid(width, height, obstacles)
     routed_nets = {}
-    for net_name, pins in nets.items():
-        # Mark pins as available even if we have an obsss in place- just for errors in the input file
-        for x, y in pins:
-            grid[y][x] = 0
 
-        source, target = pins
-        path = lee_algorithm(grid, source, target, wrong_direction_cost)
+    for net_name, pins in nets.items():
+        # Ensure pins are clear in the grid
+        for layer, x, y in pins:
+            grid[layer][y][x] = 0
+
+        path = lee_algorithm_multisource(grid, pins, wrong_direction_cost, via_cost)
         if path is None:
             print(f"Failed to route net {net_name}")
         else:
             routed_nets[net_name] = path
-            for x, y in path:
-                grid[y][x] = 1
-        # Mark pins as used --> for the next internation
-        for x, y in pins:
-            grid[y][x] = 1
+            for layer, x, y in path:
+                grid[layer][y][x] = 1
+
+        # Mark pins as occupied for next net
+        for layer, x, y in pins:
+            grid[layer][y][x] = 1
+
     return routed_nets
+
 #================================== MAIN ==================================
 def main():
 
@@ -270,9 +364,9 @@ def main():
         print("\n Starting routing...")
         width, height, obstacles, nets = parse_input_file(input_file)
         print(f"width {width}, height{height}, obstacles{obstacles}, nets{nets}")
-        reorder_nets = reorder_nets(nets, width, height)
+        reorder_net = reorder_nets(nets, width, height)
         # for testing
-        print (reorder_nets)
+        print (reorder_net)
     #     routed_nets = route_all_nets(width, height, obstacles, nets, wrong_direction_cost)
     #     write_output_file(routed_nets, output_file)
 
