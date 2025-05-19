@@ -122,52 +122,96 @@ def write_output_file(routed_nets, output_filename):
             f.write("\n")
 
 # Visualize the routed nets
-def visualize_routing(width, height, obstacles, routed_nets):
-    grid = np.full((height, width), '', dtype=object)
+def visualize_routing(width, height, obstacles, routed_nets, nets):
+    layer_grids = [np.full((height, width), '', dtype=object) for _ in range(2)]
+    via_positions = set()
 
-    # mark obstacles
-    for x, y in obstacles:
-        grid[y][x] = 'obs'
+    # Mark obstacles in layer 1 (index 0)
+    for (x, y) in obstacles:
+        layer_grids[0][y][x] = 'obs'  # Mark obstacle cell with 'obs'
 
-    # mark routed paths and store source & target
+    # Identify via positions for reference
     for net_name, path in routed_nets.items():
-        for i, (x, y) in enumerate(path):
-            if (x, y) == path[0]:
-                grid[y][x] = 'S'
-            elif (x, y) == path[-1]:
-                grid[y][x] = 'T'
-            elif grid[y][x] not in ('S', 'T'):
-                grid[y][x] = str(i)
+        for j in range(1, len(path)):
+            prev_layer, x1, y1 = path[j - 1]
+            curr_layer, x2, y2 = path[j]
+            if (x1, y1) == (x2, y2) and prev_layer != curr_layer:
+                via_positions.add((x1, y1))
 
-    fig, ax = plt.subplots(figsize=(width / 2, height / 2)) #not sure
+    # Collect all pin positions across all nets for quick lookup
+    pins_positions = set()
+    for pin_list in nets.values():
+        for layer, x, y in pin_list:
+            pins_positions.add((layer, x, y))
+
+    for net_name, path in routed_nets.items():
+        for i, (layer, x, y) in enumerate(path):
+            is_via = (x, y) in via_positions
+            is_pin = (layer, x, y) in pins_positions
+            step_num = i + 1  # 1-based step numbering
+
+            if is_pin:
+                label = f"{step_num}"
+                if is_via:
+                    label += " v"
+            else:
+                # Non-pin steps
+                if i == 0:
+                    label = f"S {step_num}"
+                    if is_via:
+                        label += " v"
+                elif i == len(path) - 1:
+                    label = f"T {step_num}"
+                    if is_via:
+                        label += " v"
+                else:
+                    label = f"{step_num}"
+                    if is_via:
+                        label += " v"
+
+            layer_grids[layer][y][x] = label
+
+    # Colors
     cmap = {
-        'obs': '#1f77b4',   # blue for obstacles
-        'S': '#f28e2b',     # orange for source
-        'T': '#76b900',     # green for target
+        'obs': '#1f77b4',  # blue
+        'P': '#76b900',    # green for pins
+        'S': '#f28e2b',    # orange for source prefix
+        'T': '#76b900',    # green for target prefix (same as pin)
     }
 
-    for y in range(height):
-        for x in range(width):
-            val = grid[y][x]
-            color = 'white'
-            if val in cmap:
-                color = cmap[val] # obstacle or source or target
-            elif val.isdigit():
-                color = '#dddddd'  # path
-            ax.add_patch(plt.Rectangle((x, y), 1, 1, color=color, ec='black'))
-            if val and val not in ['obs']:
-                ax.text(x + 0.5, y + 0.5, val, va='center', ha='center', fontsize=8)
+    fig, axs = plt.subplots(1, 2, figsize=(width * 1.2, height))
+    for layer in [0, 1]:
+        ax = axs[layer]
+        ax.set_title(f"Layer {layer + 1}")
+        for y in range(height):
+            for x in range(width):
+                val = layer_grids[layer][y][x]
+                color = 'white'
+                if val == 'obs':
+                    color = cmap['obs']
+                elif (layer, x, y) in pins_positions:
+                    color = cmap['P']   # Use pin color if it's a pin cell, regardless of label prefix
+                elif val.startswith('S'):
+                    color = cmap['S']
+                elif val.startswith('T'):
+                    color = cmap['T']
+                elif val != '':
+                    color = '#dddddd'  # light grey for path
 
-    ax.set_xlim(0, width)
-    ax.set_ylim(0, height)
-    ax.set_xticks(range(width))
-    ax.set_yticks(range(height))
-    ax.set_xticklabels(range(width))
-    ax.set_yticklabels(range(height))
-    ax.set_aspect('equal')
-    ax.invert_yaxis()
-    ax.set_title("Maze Routing Grid View")
-    plt.grid(True)
+                ax.add_patch(plt.Rectangle((x, y), 1, 1, color=color, ec='black'))
+                if val and val != 'obs':
+                    ax.text(x + 0.5, y + 0.5, val, va='center', ha='center', fontsize=8)
+
+        ax.set_xlim(0, width)
+        ax.set_ylim(0, height)
+        ax.set_xticks(range(width))
+        ax.set_yticks(range(height))
+        ax.set_aspect('equal')
+        ax.invert_yaxis()
+        ax.grid(True)
+
+    plt.suptitle("Maze Routing - Side-by-Side Layer Visualization with Vias and Numbering")
+    plt.tight_layout()
     plt.savefig("routing_visualization.png")
     plt.show()
 
@@ -313,14 +357,13 @@ def main():
 
         print(f"✅ Routing completed. Results saved to {output_file}")
 
-    #     # visualize
-    #     visualize = input("Do you want to generate a visualization? (y/n): ").strip().lower()
-    #     if visualize == 'y':
-    #         visualize_routing(width, height, obstacles, routed_nets)
-    #         print("✅ Visualization saved as routing_visualization.png")
     else:
         print("Couldn't start routing...")
 
-
+    # visualize
+    visualize = input("Do you want to generate a visualization? (y/n): ").strip().lower()
+    if visualize == 'y':
+        visualize_routing(width, height, obstacles, routed_nets, new_nets)
+        print("✅ Visualization saved as routing_visualization.png")
 if __name__ == "__main__":
     main()
