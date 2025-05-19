@@ -100,6 +100,21 @@ def reorder_pins (nets, chip_width, chip_height):
 
     return new_nets
 
+# reorder the nets based on the sum of manhattan distances (shortest first)
+def reorder_nets_by_manhattan_distance(nets):
+    def net_manhattan_score(pin_list):
+        score = 0
+        for i in range(len(pin_list)):
+            for j in range(i + 1, len(pin_list)):
+                _, x1, y1 = pin_list[i]
+                _, x2, y2 = pin_list[j]
+                score += abs(x1 - x2) + abs(y1 - y2)
+        return score
+
+    sorted_nets = dict(sorted(nets.items(), key=lambda item: net_manhattan_score(item[1])))
+    return sorted_nets
+
+
 # initialize grid
 def initialize_grid(width, height, obstacles):
      # Create two layers: each is a 2D grid of zeros
@@ -353,6 +368,9 @@ def main():
         
         width, height, obstacles, nets = parse_input_file(input_file)
         new_nets = reorder_pins(nets, width, height)
+        reordered_nets = reorder_nets_by_manhattan_distance(new_nets)
+        routed_nets = route_all_nets(width, height, obstacles, reordered_nets, wrong_direction_cost, VIA_cost)
+
         routed_nets = route_all_nets(width, height, obstacles, new_nets, wrong_direction_cost, VIA_cost)
         write_output_file(routed_nets, output_file)
 
