@@ -217,63 +217,65 @@ def visualize_routing(width, height, obstacles, routed_nets, nets):
 
 # ------------------------------- LEE MAZE ALG. MULTIPIN -------------------------------
 def lee_algorithm_multisource(grid, pins, wrong_direction_cost, via_cost=20):
+    import heapq
     width = len(grid[0][0])
     height = len(grid[0])
-
-    # Initialize visited structures
-    sources = set([pins[0]])  # Start from the first pin
+    
+    # Start from the first pin as initial source.
+    sources = set([pins[0]])
     targets = set(pins[1:])
     full_path = []
     
     while targets:
-        # BFS from current sources to find closest target
-        queue = deque(sources)
-        visited = set(sources)
+        # Use a heap-based priority queue to always expand the lowest cost node next.
+        heap = []
+        for s in sources:
+            heapq.heappush(heap, (0, s))
         parent = {pos: None for pos in sources}
         costs = {pos: 0 for pos in sources}
         found_target = None
 
-        while queue and not found_target:
-            current = queue.popleft()
+        while heap:
+            curr_cost, current = heapq.heappop(heap)
             layer, x, y = current
 
-            # Check if we've reached a target pin
+            # If we reached one of the target pins, stop.
             if current in targets:
                 found_target = current
                 break
 
-            # Explore 4 directions
+            # Explore 4 cardinal directions.
             for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < width and 0 <= ny < height:
+                    # Allow expansion if cell is free or it is a target.
                     if grid[layer][ny][nx] == 0 or (layer, nx, ny) in targets:
+                        # Add wrong direction cost depending on the current layer.
                         direction_cost = 0
                         if (layer == 0 and dx == 0) or (layer == 1 and dy == 0):
                             direction_cost = wrong_direction_cost
-                        new_cost = costs[current] + 1 + direction_cost
+                        new_cost = curr_cost + 1 + direction_cost
                         new_pos = (layer, nx, ny)
                         if new_pos not in costs or new_cost < costs[new_pos]:
                             costs[new_pos] = new_cost
                             parent[new_pos] = current
-                            queue.append(new_pos)
-                            visited.add(new_pos)
+                            heapq.heappush(heap, (new_cost, new_pos))
 
-            # Try switching layers (vias)
+            # Try switching layers (via move).
             other_layer = 1 - layer
             if grid[other_layer][y][x] == 0 or (other_layer, x, y) in targets:
                 via_pos = (other_layer, x, y)
-                new_cost = costs[current] + via_cost
+                new_cost = curr_cost + via_cost
                 if via_pos not in costs or new_cost < costs[via_pos]:
                     costs[via_pos] = new_cost
                     parent[via_pos] = current
-                    queue.append(via_pos)
-                    visited.add(via_pos)
-
+                    heapq.heappush(heap, (new_cost, via_pos))
+        
         if found_target is None:
             print("Failed to connect all pins.")
-            return None  # Can't connect all pins
+            return None  # Cannot connect all pins
 
-        # Trace back the path and update grid
+        # Traceback the path from the found target.
         path = []
         curr = found_target
         while curr is not None:
@@ -281,11 +283,10 @@ def lee_algorithm_multisource(grid, pins, wrong_direction_cost, via_cost=20):
             curr = parent[curr]
         path.reverse()
 
-        # Mark path cells as new sources
+        # Mark the traced path as part of the source for subsequent connections.
         for cell in path:
             sources.add(cell)
-            grid[cell[0]][cell[2]][cell[1]] = 1  # layer, y, x
-
+            grid[cell[0]][cell[2]][cell[1]] = 1  # Mark the cell as occupied
         full_path.extend(path)
         targets.remove(found_target)
 
