@@ -242,7 +242,6 @@ def lee_algorithm_multisource(grid, pins, wrong_direction_cost, via_cost=20):
     full_path = []
     
     while targets:
-        # Use a heap-based priority queue to always expand the lowest cost node next.
         heap = []
         for s in sources:
             heapq.heappush(heap, (0, s))
@@ -298,10 +297,10 @@ def lee_algorithm_multisource(grid, pins, wrong_direction_cost, via_cost=20):
             curr = parent[curr]
         path.reverse()
 
-        # Mark the traced path as part of the source for subsequent connections.
+        # Mark the traced path as part of the source for foloowing connections
         for cell in path:
             sources.add(cell)
-            grid[cell[0]][cell[2]][cell[1]] = 1  # Mark the cell as occupied
+            grid[cell[0]][cell[2]][cell[1]] = 1  
         full_path.extend(path)
         targets.remove(found_target)
 
