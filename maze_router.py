@@ -369,8 +369,6 @@ def main():
         new_nets = reorder_pins(nets, width, height)
         reordered_nets = reorder_nets_by_manhattan_distance(new_nets)
         routed_nets = route_all_nets(width, height, obstacles, reordered_nets, wrong_direction_cost, VIA_cost)
-
-        routed_nets = route_all_nets(width, height, obstacles, new_nets, wrong_direction_cost, VIA_cost)
         write_output_file(routed_nets, output_file)
 
         print(f"✅ Routing completed. Results saved to {output_file}")
